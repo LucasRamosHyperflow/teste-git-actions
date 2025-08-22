@@ -130,14 +130,9 @@ jobs:
         if: steps.check-latest.outputs.is_latest == 'true' && steps.create-pr.outputs.created == 'true'
         run: |
           PR_NUMBER=${{ steps.create-pr.outputs.pr_number }}
-          
-          # Aguardar um pouco para o PR ser criado completamente
           sleep 5
-          
-          # Aprovar o PR
-          gh pr review "$PR_NUMBER" --approve --body "✅ Auto-approved by GitHub Actions - This release has passed all checks and is ready to be merged into staging."
-          
-          echo "✅ Auto-approved PR #$PR_NUMBER"
+          gh pr review "$PR_NUMBER" --approve --body "Auto-approved by GitHub Actions"
+          echo "Auto-approved PR #$PR_NUMBER"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -164,21 +159,21 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo "## 📋 Action Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Current Branch:** ${{ steps.check-latest.outputs.current_branch }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Latest Release:** ${{ steps.check-latest.outputs.latest_release }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Is Latest:** ${{ steps.check-latest.outputs.is_latest }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Action Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Current Branch: ${{ steps.check-latest.outputs.current_branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Latest Release: ${{ steps.check-latest.outputs.latest_release }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Is Latest: ${{ steps.check-latest.outputs.is_latest }}" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ steps.check-latest.outputs.is_latest }}" = "true" ]; then
-            if [ "${{ steps.check-pr.outputs.existing_pr }}" != "" ]; then
-              echo "- **Result:** Found existing PR #${{ steps.check-pr.outputs.existing_pr }}" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${{ steps.check-pr.outputs.existing_pr }}" ]; then
+              echo "- Result: Found existing PR #${{ steps.check-pr.outputs.existing_pr }}" >> $GITHUB_STEP_SUMMARY
             elif [ "${{ steps.create-pr.outputs.created }}" = "true" ]; then
-              echo "- **Result:** ✅ Created new PR #${{ steps.create-pr.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+              echo "- Result: Created new PR #${{ steps.create-pr.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
             else
-              echo "- **Result:** ⚠️ No PR needed (no differences)" >> $GITHUB_STEP_SUMMARY
+              echo "- Result: No PR needed (no differences)" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "- **Result:** ⏭️ Skipped (not latest release)" >> $GITHUB_STEP_SUMMARY
+            echo "- Result: Skipped (not latest release)" >> $GITHUB_STEP_SUMMARY
           fi)
           
           # Adicionar labels após criar o PR
