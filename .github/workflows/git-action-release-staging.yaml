@@ -1,0 +1,41 @@
+name: Merge Only Latest Release Branch into Main
+
+on:
+  push:
+    branches:
+      - 'release-*'
+
+jobs:
+  merge-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Config Git
+        run: |
+          git config --global user.name "LucasRamosHyperflow"
+          git config --global user.email "lucas.ramos@hyperflow.global"
+
+      - name: Descobrir última release
+        id: latest
+        run: |
+          LATEST=$(git branch -r | grep 'origin/release-' | sed 's|origin/||' | sort -V | tail -n1)
+          echo "last_release=$LATEST" >> $GITHUB_OUTPUT
+          echo "Última release encontrada: $LATEST"
+
+      - name: Merge somente se for a última release
+        run: |
+          CURRENT_BRANCH="${GITHUB_REF##*/}"
+          if [ "$CURRENT_BRANCH" != "${{ steps.latest.outputs.last_release }}" ]; then
+            echo "⚠️ Branch $CURRENT_BRANCH não é a última release. Nada a fazer."
+            exit 0
+          fi
+
+          echo "✅ Fazendo merge da última release: $CURRENT_BRANCH -> staging"
+          git checkout staging
+          git pull origin staging
+          git merge "$CURRENT_BRANCH" --no-edit
+          git push origin staging
