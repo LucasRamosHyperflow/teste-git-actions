@@ -48,7 +48,7 @@ jobs:
 
       # 5️⃣ Criar ou atualizar Pull Request para staging
       - name: Create or update Pull Request to staging
-        if: steps.check.outputs.not_latest == 'false'
+        id: pr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -68,8 +68,8 @@ jobs:
 
       # 6️⃣ Aprovar PR automaticamente (para permitir auto-merge)
       - name: Approve Pull Request
-        if: steps.check.outputs.not_latest == 'false'
         uses: hmarr/auto-approve-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-labels: auto-merge
+          pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
