@@ -1,23 +1,22 @@
-name: Merge Only Latest Release Branch into Main
+name: PR from Release to Staging
 
 on:
   push:
     branches:
       - 'release-*'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  merge-release:
+  create-pr:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Config Git
-        run: |
-          git config --global user.name "LucasRamosHyperflow"
-          git config --global user.email "lucas.ramos@hyperflow.global"
 
       - name: Descobrir última release
         id: latest
@@ -26,17 +25,26 @@ jobs:
           echo "last_release=$LATEST" >> $GITHUB_OUTPUT
           echo "Última release encontrada: '$LATEST'"
 
-      - name: Merge somente se for a última release
+      - name: Verificar se é a última release
+        id: check
         run: |
           CURRENT_BRANCH="${GITHUB_REF##*/}"
           echo "Branch atual: '$CURRENT_BRANCH'"
           if [ "$CURRENT_BRANCH" != "${{ steps.latest.outputs.last_release }}" ]; then
-            echo "⚠️ Branch $CURRENT_BRANCH não é a última release. Nada a fazer."
-            exit 0
+            echo "not_latest=true" >> $GITHUB_OUTPUT
+          else
+            echo "not_latest=false" >> $GITHUB_OUTPUT
           fi
 
-          echo "✅ Fazendo merge da última release: $CURRENT_BRANCH -> staging"
-          git checkout staging
-          git pull origin staging
-          git merge "$CURRENT_BRANCH" --no-edit
-          git push origin staging
+      - name: Criar Pull Request para staging
+        if: steps.check.outputs.not_latest == 'false'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: pr-${{ steps.latest.outputs.last_release }}-to-staging
+          base: staging
+          title: "Merge ${{ steps.latest.outputs.last_release }} into staging"
+          body: |
+            Este PR foi criado automaticamente pelo GitHub Actions.
+            Release: **${{ steps.latest.outputs.last_release }}**
+          labels: auto-merge   # 👈 label para permitir auto-merge
