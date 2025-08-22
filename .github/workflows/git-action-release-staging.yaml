@@ -10,7 +10,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  create-pr:
+  auto-pr-staging:
     runs-on: ubuntu-latest
 
     steps:
@@ -48,6 +48,7 @@ jobs:
 
       # 5️⃣ Criar ou atualizar Pull Request para staging
       - name: Create or update Pull Request to staging
+        if: steps.check.outputs.not_latest == 'false'
         id: pr
         uses: peter-evans/create-pull-request@v6
         with:
@@ -68,7 +69,9 @@ jobs:
 
       # 6️⃣ Aprovar PR automaticamente (para permitir auto-merge)
       - name: Approve Pull Request
+        if: steps.check.outputs.not_latest == 'false'
         uses: hmarr/auto-approve-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
+          review-message: "Approved automatically by GitHub Actions"
