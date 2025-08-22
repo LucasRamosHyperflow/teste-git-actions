@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout completo do repo
+      # 1️⃣ Checkout completo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -26,15 +26,27 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 3️⃣ Descobrir a branch atual (a release que gerou o push)
+      # 3️⃣ Branch atual
       - name: Current branch
         id: current
         run: |
-          CURRENT="${GITHUB_REF##*/}"
-          echo "current_branch=$CURRENT" >> $GITHUB_OUTPUT
-          echo "Current branch: $CURRENT"
+          echo "current_branch=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
-      # 4️⃣ Criar ou atualizar Pull Request para staging
+      # 4️⃣ Criar commit dummy (para garantir PR mesmo sem alterações)
+      - name: Create dummy commit
+        run: |
+          git checkout -B pr-${{ steps.current.outputs.current_branch }}-to-staging
+          # Criar ou atualizar um arquivo oculto com timestamp
+          echo "$(date)" > .github/.last-release-update
+          git add .github/.last-release-update
+          git commit -m "[ci] update dummy file for PR to staging" || echo "No changes to commit"
+
+      # 5️⃣ Push da branch do PR
+      - name: Push PR branch
+        run: |
+          git push -u origin pr-${{ steps.current.outputs.current_branch }}-to-staging --force
+
+      # 6️⃣ Criar ou atualizar Pull Request
       - name: Create or update Pull Request to staging
         id: pr
         uses: peter-evans/create-pull-request@v6
@@ -53,10 +65,8 @@ jobs:
           signoff: false
           delete-branch: false
           draft: false
-          update: true
-          allow-empty: true
 
-      # 5️⃣ Aprovar PR automaticamente
+      # 7️⃣ Aprovar PR automaticamente
       - name: Approve Pull Request
         uses: hmarr/auto-approve-action@v2
         with:
