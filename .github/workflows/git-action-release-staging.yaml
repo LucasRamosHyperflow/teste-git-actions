@@ -18,6 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       # 2️⃣ Configurar Git
@@ -26,50 +27,148 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 3️⃣ Branch atual
-      - name: Current branch
-        id: current
+      # 3️⃣ Identificar branch atual e verificar se é a mais recente
+      - name: Check if current branch is latest release
+        id: check-latest
         run: |
-          echo "current_branch=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+          CURRENT_BRANCH=${GITHUB_REF##*/}
+          echo "current_branch=$CURRENT_BRANCH" >> $GITHUB_OUTPUT
+          
+          # Buscar todas as branches release ordenadas por versão
+          git fetch origin
+          LATEST_RELEASE=$(git branch -r | grep 'origin/release-' | sed 's|.*origin/||' | sort -V | tail -n1)
+          echo "latest_release=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+          
+          echo "Current branch: $CURRENT_BRANCH"
+          echo "Latest release: $LATEST_RELEASE"
+          
+          if [ "$CURRENT_BRANCH" = "$LATEST_RELEASE" ]; then
+            echo "is_latest=true" >> $GITHUB_OUTPUT
+            echo "✅ Current branch is the latest release"
+          else
+            echo "is_latest=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Current branch is not the latest release - skipping PR creation"
+          fi
 
-      # 4️⃣ Criar commit dummy (para garantir PR mesmo sem alterações)
-      - name: Create dummy commit
+      # 4️⃣ Verificar se já existe PR aberto para esta branch
+      - name: Check for existing PR
+        if: steps.check-latest.outputs.is_latest == 'true'
+        id: check-pr
         run: |
-          git checkout -B pr-${{ steps.current.outputs.current_branch }}-to-staging
-          # Criar ou atualizar um arquivo oculto com timestamp
-          echo "$(date)" > .github/.last-release-update
-          git add .github/.last-release-update
-          git commit -m "[ci] update dummy file for PR to staging" || echo "No changes to commit"
+          CURRENT_BRANCH=${{ steps.check-latest.outputs.current_branch }}
+          
+          # Buscar PRs abertos desta branch para staging
+          EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --base "staging" --state "open" --json number --jq '.[0].number // empty')
+          
+          if [ -n "$EXISTING_PR" ]; then
+            echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
+            echo "📋 Found existing PR #$EXISTING_PR"
+          else
+            echo "existing_pr=" >> $GITHUB_OUTPUT
+            echo "🆕 No existing PR found"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5️⃣ Push da branch do PR
-      - name: Push PR branch
+      # 5️⃣ Criar Pull Request (apenas se for a release mais recente e não existir PR)
+      - name: Create Pull Request to staging
+        if: steps.check-latest.outputs.is_latest == 'true' && steps.check-pr.outputs.existing_pr == ''
+        id: create-pr
         run: |
-          git push -u origin pr-${{ steps.current.outputs.current_branch }}-to-staging --force
+          CURRENT_BRANCH=${{ steps.check-latest.outputs.current_branch }}
+          
+          # Verificar se há diferenças entre a branch atual e staging
+          git fetch origin staging
+          DIFF_COUNT=$(git rev-list --count origin/staging..HEAD)
+          
+          if [ "$DIFF_COUNT" -eq "0" ]; then
+            echo "⚠️ No differences found between $CURRENT_BRANCH and staging"
+            echo "created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Criar PR usando GitHub CLI
+          PR_NUMBER=$(gh pr create \
+            --title "🚀 Merge $CURRENT_BRANCH into staging" \
+            --body "**Automated PR created by GitHub Actions**
+          
+          📦 **Release Branch:** \`$CURRENT_BRANCH\`
+          🎯 **Target:** \`staging\`
+          📊 **Commits:** $DIFF_COUNT new commit(s)
+          
+          ---
+          
+          This PR will merge the latest release branch into staging.
+          
+          **Changes included:**
+          $(git log --oneline origin/staging..HEAD | head -10)
+          
+          > Auto-generated on $(date)" \
+            --base staging \
+            --head "$CURRENT_BRANCH" \
+            --label "auto-release" \
+            --label "staging" | grep -o '[0-9]\+$')
+            
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "created=true" >> $GITHUB_OUTPUT
+          echo "✅ Created PR #$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6️⃣ Criar ou atualizar Pull Request
-      - name: Create or update Pull Request to staging
-        id: pr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: pr-${{ steps.current.outputs.current_branch }}-to-staging
-          base: staging
-          title: "Merge ${{ steps.current.outputs.current_branch }} into staging"
-          body: |
-            PR criado automaticamente pelo GitHub Actions.
-            Release: **${{ steps.current.outputs.current_branch }}**
-          labels: auto-merge
-          commit-message: "[create-pull-request] automated change"
-          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          signoff: false
-          delete-branch: false
-          draft: false
+      # 6️⃣ Auto-aprovar o PR (opcional)
+      - name: Auto-approve Pull Request
+        if: steps.check-latest.outputs.is_latest == 'true' && steps.create-pr.outputs.created == 'true'
+        run: |
+          PR_NUMBER=${{ steps.create-pr.outputs.pr_number }}
+          
+          # Aguardar um pouco para o PR ser criado completamente
+          sleep 5
+          
+          # Aprovar o PR
+          gh pr review "$PR_NUMBER" --approve --body "✅ Auto-approved by GitHub Actions
+          
+          This release has passed all checks and is ready to be merged into staging."
+          
+          echo "✅ Auto-approved PR #$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7️⃣ Aprovar PR automaticamente
-      - name: Approve Pull Request
-        uses: hmarr/auto-approve-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
-          review-message: "Approved automatically by GitHub Actions"
+      # 7️⃣ Opcional: Auto-merge do PR (descomente se quiser merge automático)
+      - name: Auto-merge Pull Request
+        if: steps.check-latest.outputs.is_latest == 'true' && steps.create-pr.outputs.created == 'true' && false # Mude para true para ativar
+        run: |
+          PR_NUMBER=${{ steps.create-pr.outputs.pr_number }}
+          
+          # Aguardar um pouco após aprovação
+          sleep 10
+          
+          # Fazer merge do PR
+          gh pr merge "$PR_NUMBER" \
+            --merge \
+            --delete-branch=false \
+            --subject "🚀 Auto-merge ${{ steps.check-latest.outputs.current_branch }} to staging"
+          
+          echo "✅ Auto-merged PR #$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8️⃣ Resumo das ações
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 📋 Action Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current Branch:** ${{ steps.check-latest.outputs.current_branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest Release:** ${{ steps.check-latest.outputs.latest_release }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Is Latest:** ${{ steps.check-latest.outputs.is_latest }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.check-latest.outputs.is_latest }}" = "true" ]; then
+            if [ "${{ steps.check-pr.outputs.existing_pr }}" != "" ]; then
+              echo "- **Result:** Found existing PR #${{ steps.check-pr.outputs.existing_pr }}" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ steps.create-pr.outputs.created }}" = "true" ]; then
+              echo "- **Result:** ✅ Created new PR #${{ steps.create-pr.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **Result:** ⚠️ No PR needed (no differences)" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "- **Result:** ⏭️ Skipped (not latest release)" >> $GITHUB_STEP_SUMMARY
+          fi
