@@ -1,4 +1,4 @@
-name: PR from Release to Staging
+name: Auto PR from Latest Release to Staging
 
 on:
   push:
@@ -12,31 +12,42 @@ permissions:
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      # 1️⃣ Checkout completo do repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Descobrir última release
+      # 2️⃣ Configurar Git
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # 3️⃣ Descobrir a última release
+      - name: Find latest release
         id: latest
         run: |
           LATEST=$(git branch -r | grep 'origin/release-' | sed 's|origin/||' | sort -V | tail -n1 | xargs)
           echo "last_release=$LATEST" >> $GITHUB_OUTPUT
-          echo "Última release encontrada: '$LATEST'"
+          echo "Latest release found: '$LATEST'"
 
-      - name: Verificar se é a última release
+      # 4️⃣ Verificar se o push atual é da última release
+      - name: Check current branch
         id: check
         run: |
           CURRENT_BRANCH="${GITHUB_REF##*/}"
-          echo "Branch atual: '$CURRENT_BRANCH'"
+          echo "Current branch: '$CURRENT_BRANCH'"
           if [ "$CURRENT_BRANCH" != "${{ steps.latest.outputs.last_release }}" ]; then
             echo "not_latest=true" >> $GITHUB_OUTPUT
           else
             echo "not_latest=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Criar Pull Request para staging
+      # 5️⃣ Criar ou atualizar Pull Request para staging
+      - name: Create or update Pull Request to staging
         if: steps.check.outputs.not_latest == 'false'
         uses: peter-evans/create-pull-request@v6
         with:
@@ -45,6 +56,20 @@ jobs:
           base: staging
           title: "Merge ${{ steps.latest.outputs.last_release }} into staging"
           body: |
-            Este PR foi criado automaticamente pelo GitHub Actions.
+            PR criado automaticamente pelo GitHub Actions.
             Release: **${{ steps.latest.outputs.last_release }}**
-          labels: auto-merge   # 👈 label para permitir auto-merge
+          labels: auto-merge
+          commit-message: "[create-pull-request] automated change"
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          signoff: false
+          delete-branch: false
+          draft: false
+
+      # 6️⃣ Aprovar PR automaticamente (para permitir auto-merge)
+      - name: Approve Pull Request
+        if: steps.check.outputs.not_latest == 'false'
+        uses: hmarr/auto-approve-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-labels: auto-merge
