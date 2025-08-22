@@ -135,9 +135,7 @@ jobs:
           sleep 5
           
           # Aprovar o PR
-          gh pr review "$PR_NUMBER" --approve --body "✅ Auto-approved by GitHub Actions
-          
-          This release has passed all checks and is ready to be merged into staging."
+          gh pr review "$PR_NUMBER" --approve --body "✅ Auto-approved by GitHub Actions - This release has passed all checks and is ready to be merged into staging."
           
           echo "✅ Auto-approved PR #$PR_NUMBER"
         env:
