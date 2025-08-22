@@ -67,9 +67,9 @@ jobs:
           delete-branch: false
           draft: false
 
-      # 6️⃣ Aprovar PR automaticamente (para permitir auto-merge)
+      # 6️⃣ Aprovar PR automaticamente (somente se PR foi criado)
       - name: Approve Pull Request
-        if: steps.check.outputs.not_latest == 'false'
+        if: steps.pr.outputs.pull-request-number != ''
         uses: hmarr/auto-approve-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
