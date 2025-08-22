@@ -22,13 +22,14 @@ jobs:
       - name: Descobrir última release
         id: latest
         run: |
-          LATEST=$(git branch -r | grep 'origin/release-' | sed 's|origin/||' | sort -V | tail -n1)
+          LATEST=$(git branch -r | grep 'origin/release-' | sed 's|origin/||' | sort -V | tail -n1 | xargs)
           echo "last_release=$LATEST" >> $GITHUB_OUTPUT
-          echo "Última release encontrada: $LATEST"
+          echo "Última release encontrada: '$LATEST'"
 
       - name: Merge somente se for a última release
         run: |
           CURRENT_BRANCH="${GITHUB_REF##*/}"
+          echo "Branch atual: '$CURRENT_BRANCH'"
           if [ "$CURRENT_BRANCH" != "${{ steps.latest.outputs.last_release }}" ]; then
             echo "⚠️ Branch $CURRENT_BRANCH não é a última release. Nada a fazer."
             exit 0
