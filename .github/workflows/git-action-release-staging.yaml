@@ -1,41 +1,65 @@
-name: Merge Only Latest Release Branch into Main
+name: Auto PR from Latest Release to Staging
 
 on:
   push:
     branches:
       - 'release-*'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  merge-release:
+  create-pr:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      # 1️⃣ Checkout completo do repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Config Git
+      # 2️⃣ Configurar Git
+      - name: Configure Git
         run: |
-          git config --global user.name "LucasRamosHyperflow"
-          git config --global user.email "lucas.ramos@hyperflow.global"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Descobrir última release
-        id: latest
+      # 3️⃣ Descobrir a branch atual (a release que gerou o push)
+      - name: Current branch
+        id: current
         run: |
-          LATEST=$(git branch -r | grep 'origin/release-' | sed 's|origin/||' | sort -V | tail -n1)
-          echo "last_release=$LATEST" >> $GITHUB_OUTPUT
-          echo "Última release encontrada: $LATEST"
+          CURRENT="${GITHUB_REF##*/}"
+          echo "current_branch=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current branch: $CURRENT"
 
-      - name: Merge somente se for a última release
-        run: |
-          CURRENT_BRANCH="${GITHUB_REF##*/}"
-          if [ "$CURRENT_BRANCH" != "${{ steps.latest.outputs.last_release }}" ]; then
-            echo "⚠️ Branch $CURRENT_BRANCH não é a última release. Nada a fazer."
-            exit 0
-          fi
+      # 4️⃣ Criar ou atualizar Pull Request para staging
+      - name: Create or update Pull Request to staging
+        id: pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: pr-${{ steps.current.outputs.current_branch }}-to-staging
+          base: staging
+          title: "Merge ${{ steps.current.outputs.current_branch }} into staging"
+          body: |
+            PR criado automaticamente pelo GitHub Actions.
+            Release: **${{ steps.current.outputs.current_branch }}**
+          labels: auto-merge
+          commit-message: "[create-pull-request] automated change"
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          signoff: false
+          delete-branch: false
+          draft: false
+          update: true
+          allow-empty: true
 
-          echo "✅ Fazendo merge da última release: $CURRENT_BRANCH -> staging"
-          git checkout staging
-          git pull origin staging
-          git merge "$CURRENT_BRANCH" --no-edit
-          git push origin staging
+      # 5️⃣ Aprovar PR automaticamente
+      - name: Approve Pull Request
+        uses: hmarr/auto-approve-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
+          review-message: "Approved automatically by GitHub Actions"
