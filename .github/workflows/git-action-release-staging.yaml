@@ -46,7 +46,7 @@ jobs:
         PR_URL=$(gh pr list --head ${{ steps.check.outputs.current }} --base staging --json url --jq '.[0].url')
         
         # Extrair número do PR
-        PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]\+)
+        PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]\+$') 
         echo "Working with PR #$PR_NUMBER"
         
         # Mergear o PR
