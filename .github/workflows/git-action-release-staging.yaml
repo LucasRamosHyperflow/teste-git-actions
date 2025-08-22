@@ -34,13 +34,23 @@ jobs:
           echo "is_latest=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Create PR to staging
+    - name: Create and merge PR to staging
       if: steps.check.outputs.is_latest == 'true'
       run: |
-        gh pr create \
+        # Criar PR ou pegar o número se já existir
+        PR_URL=$(gh pr create \
           --title "Merge ${{ steps.check.outputs.current }} to staging" \
           --body "Auto-merge latest release to staging" \
           --base staging \
-          --head ${{ steps.check.outputs.current }} || echo "PR may already exist"
+          --head ${{ steps.check.outputs.current }} 2>/dev/null) || \
+        PR_URL=$(gh pr list --head ${{ steps.check.outputs.current }} --base staging --json url --jq '.[0].url')
+        
+        # Extrair número do PR
+        PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]\+$') 
+        echo "Working with PR #$PR_NUMBER"
+        
+        # Mergear o PR
+        gh pr merge "$PR_NUMBER" --merge --delete-branch=false
+        echo "Successfully merged PR #$PR_NUMBER"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
