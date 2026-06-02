@@ -54,3 +54,10 @@ jobs:
         echo "Successfully merged PR #$PR_NUMBER"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Notify webhook
+      if: always()
+      run: |
+        curl -X POST -H "Content-Type: application/json" \
+        -d "{\"text\":\"🔔 Auto Merge Hyperflow Desk ${{ steps.check.outputs.current }} → Staging finalizado com status: ${{ job.status }}\"}" \
+        https://default8e5c6a4bf9d64d0b89f5445169c45b.e9.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/ecb7013ab1bf475eaa677711fd06c360/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=BlTFvMwrkKL3e9wsz207cvhbW25OZlr_0FvXkrxeItg
