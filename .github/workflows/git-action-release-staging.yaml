@@ -59,11 +59,11 @@ jobs:
       if: always()
       run: |
         if [ "${{ job.status }}" = "success" ]; then
-          COLOR="Good"
           ICON="✅"
+          STATUS="SUCCESS"
         else
-          COLOR="Attention"
           ICON="❌"
+          STATUS="FAILED"
         fi
     
         cat > payload.json <<EOF
@@ -77,6 +77,12 @@ jobs:
               "size": "Large",
               "weight": "Bolder",
               "text": "${ICON} Auto Merge Release"
+            },
+            {
+              "type": "TextBlock",
+              "text": "Resultado da sincronização automática para staging",
+              "isSubtle": true,
+              "wrap": true
             },
             {
               "type": "FactSet",
@@ -95,11 +101,15 @@ jobs:
                 },
                 {
                   "title": "Status",
-                  "value": "${{ job.status }}"
+                  "value": "${STATUS}"
                 },
                 {
                   "title": "Triggered By",
                   "value": "${{ github.actor }}"
+                },
+                {
+                  "title": "Commit",
+                  "value": "${{ github.sha }}"
                 }
               ]
             }
@@ -109,6 +119,11 @@ jobs:
               "type": "Action.OpenUrl",
               "title": "View Workflow",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            },
+            {
+              "type": "Action.OpenUrl",
+              "title": "View Pull Request",
+              "url": "${{ steps.merge.outputs.pr_url }}"
             }
           ]
         }
