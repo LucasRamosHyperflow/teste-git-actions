@@ -1,4 +1,4 @@
-name: Auto Merge Latest release to staging
+name: Auto Merge Latest Release to Staging
 
 on:
   push:
@@ -12,8 +12,7 @@ permissions:
 jobs:
   merge-to-staging:
     runs-on: ubuntu-latest
-    environment: staging
-
+    
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -24,11 +23,11 @@ jobs:
       id: check
       run: |
         CURRENT=${GITHUB_REF##*/}
-        LATEST=$(git branch -r | grep -oE 'release-[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -n1)
-
+        LATEST=$(git branch -r | grep 'origin/release-' | sed 's|.*origin/||' | sort -V | tail -n1)
+        
         echo "current=$CURRENT" >> $GITHUB_OUTPUT
         echo "latest=$LATEST" >> $GITHUB_OUTPUT
-
+        
         if [ "$CURRENT" = "$LATEST" ]; then
           echo "is_latest=true" >> $GITHUB_OUTPUT
         else
