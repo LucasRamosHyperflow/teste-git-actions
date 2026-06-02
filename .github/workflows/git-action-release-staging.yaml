@@ -55,9 +55,66 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: Notify webhook
+    - name: Notify Teams
       if: always()
       run: |
-        curl -X POST -H "Content-Type: application/json" \
-        -d "{\"text\":\"🔔 Auto Merge Hyperflow Desk ${{ steps.check.outputs.current }} → Staging finalizado com status: ${{ job.status }}\"}" \
-        https://default8e5c6a4bf9d64d0b89f5445169c45b.e9.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/ecb7013ab1bf475eaa677711fd06c360/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=BlTFvMwrkKL3e9wsz207cvhbW25OZlr_0FvXkrxeItg
+        if [ "${{ job.status }}" = "success" ]; then
+          COLOR="Good"
+          ICON="✅"
+        else
+          COLOR="Attention"
+          ICON="❌"
+        fi
+    
+        cat > payload.json <<EOF
+        {
+          "type": "AdaptiveCard",
+          "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+          "version": "1.5",
+          "body": [
+            {
+              "type": "TextBlock",
+              "size": "Large",
+              "weight": "Bolder",
+              "text": "${ICON} Auto Merge Release"
+            },
+            {
+              "type": "FactSet",
+              "facts": [
+                {
+                  "title": "Repository",
+                  "value": "${{ github.repository }}"
+                },
+                {
+                  "title": "Source Branch",
+                  "value": "${{ steps.check.outputs.current }}"
+                },
+                {
+                  "title": "Target Branch",
+                  "value": "staging"
+                },
+                {
+                  "title": "Status",
+                  "value": "${{ job.status }}"
+                },
+                {
+                  "title": "Triggered By",
+                  "value": "${{ github.actor }}"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "type": "Action.OpenUrl",
+              "title": "View Workflow",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+          ]
+        }
+        EOF
+    
+        curl \
+          -H "Content-Type: application/json" \
+          --data @payload.json \
+          "https://default8e5c6a4bf9d64d0b89f5445169c45b.e9.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/ecb7013ab1bf475eaa677711fd06c360/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=BlTFvMwrkKL3e9wsz207cvhbW25OZlr_0FvXkrxeItg"
