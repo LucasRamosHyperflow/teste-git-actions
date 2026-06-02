@@ -1,4 +1,4 @@
-name: Auto PR from Latest Release to Staging
+name: Auto Merge Latest release to staging
 
 on:
   push:
@@ -10,56 +10,55 @@ permissions:
   pull-requests: write
 
 jobs:
-  create-pr:
+  merge-to-staging:
     runs-on: ubuntu-latest
+    environment: staging
 
     steps:
-      # 1️⃣ Checkout completo do repo
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      # 2️⃣ Configurar Git
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    - name: Check if this is the latest release
+      id: check
+      run: |
+        CURRENT=${GITHUB_REF##*/}
+        LATEST=$(git branch -r | grep -oE 'release-[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -n1)
 
-      # 3️⃣ Descobrir a branch atual (a release que gerou o push)
-      - name: Current branch
-        id: current
-        run: |
-          CURRENT="${GITHUB_REF##*/}"
-          echo "current_branch=$CURRENT" >> $GITHUB_OUTPUT
-          echo "Current branch: $CURRENT"
+        echo "current=$CURRENT" >> $GITHUB_OUTPUT
+        echo "latest=$LATEST" >> $GITHUB_OUTPUT
 
-      # 4️⃣ Criar ou atualizar Pull Request para staging
-      - name: Create or update Pull Request to staging
-        id: pr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: pr-${{ steps.current.outputs.current_branch }}-to-staging
-          base: staging
-          title: "Merge ${{ steps.current.outputs.current_branch }} into staging"
-          body: |
-            PR criado automaticamente pelo GitHub Actions.
-            Release: **${{ steps.current.outputs.current_branch }}**
-          labels: auto-merge
-          commit-message: "[create-pull-request] automated change"
-          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          signoff: false
-          delete-branch: false
-          draft: false
-          update: true
-          allow-empty: true
+        if [ "$CURRENT" = "$LATEST" ]; then
+          echo "is_latest=true" >> $GITHUB_OUTPUT
+        else
+          echo "is_latest=false" >> $GITHUB_OUTPUT
+        fi
 
-      # 5️⃣ Aprovar PR automaticamente
-      - name: Approve Pull Request
-        uses: hmarr/auto-approve-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
-          review-message: "Approved automatically by GitHub Actions"
+    - name: Create and merge PR to staging
+      if: steps.check.outputs.is_latest == 'true'
+      run: |
+        # Criar PR ou pegar o número se já existir
+        PR_URL=$(gh pr create \
+          --title "Merge ${{ steps.check.outputs.current }} to staging" \
+          --body "Auto-merge latest release to staging" \
+          --base staging \
+          --head ${{ steps.check.outputs.current }} 2>/dev/null) || \
+        PR_URL=$(gh pr list --head ${{ steps.check.outputs.current }} --base staging --json url --jq '.[0].url')
+
+        # Extrair número do PR
+        PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]\+$') 
+        echo "Working with PR #$PR_NUMBER"
+
+        # Mergear o PR
+        gh pr merge "$PR_NUMBER" --merge --admin --delete-branch=false
+        echo "Successfully merged PR #$PR_NUMBER"
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+    - name: Notify webhook
+      if: always()
+      run: |
+        curl -X POST -H "Content-Type: application/json" \
+        -d "{\"text\":\"🔔 Auto Merge Hyperflow Desk ${{ steps.check.outputs.current }} → Staging finalizado com status: ${{ job.status }}\"}" \
+        https://default8e5c6a4bf9d64d0b89f5445169c45b.e9.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/ecb7013ab1bf475eaa677711fd06c360/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=BlTFvMwrkKL3e9wsz207cvhbW25OZlr_0FvXkrxeItg
